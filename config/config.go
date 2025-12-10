@@ -15,11 +15,19 @@ import (
 
 // YAMLConfig represents the root structure of the YAML configuration file
 type YAMLConfig struct {
-	Curve  string       `yaml:"curve"`
-	DN     DNConfig     `yaml:"dn"`
-	CA     CertConfig   `yaml:"ca"`
-	Server CertConfig   `yaml:"server"`
-	Client CertConfig   `yaml:"client"`
+	Curve    string         `yaml:"curve"`
+	Validity ValidityConfig `yaml:"validity"`
+	DN       DNConfig       `yaml:"dn"`
+	CA       CertConfig     `yaml:"ca"`
+	Server   CertConfig     `yaml:"server"`
+	Client   CertConfig     `yaml:"client"`
+}
+
+// ValidityConfig represents certificate validity periods in years
+type ValidityConfig struct {
+	CA     int `yaml:"ca"`
+	Server int `yaml:"server"`
+	Client int `yaml:"client"`
 }
 
 // DNConfig represents common Distinguished Name fields
@@ -32,11 +40,11 @@ type DNConfig struct {
 
 // CertConfig represents certificate-specific configuration
 type CertConfig struct {
-	OrganizationalUnit string     `yaml:"organizational_unit"`
-	CommonName         string     `yaml:"common_name"`
-	KeyUsage           []string   `yaml:"key_usage"`
-	ExtKeyUsage        []string   `yaml:"ext_key_usage"`
-	AltNames           *AltNames  `yaml:"alt_names,omitempty"`
+	OrganizationalUnit string    `yaml:"organizational_unit"`
+	CommonName         string    `yaml:"common_name"`
+	KeyUsage           []string  `yaml:"key_usage"`
+	ExtKeyUsage        []string  `yaml:"ext_key_usage"`
+	AltNames           *AltNames `yaml:"alt_names,omitempty"`
 }
 
 // AltNames represents Subject Alternative Names
@@ -47,13 +55,14 @@ type AltNames struct {
 
 // Config represents parsed certificate configuration for internal use
 type Config struct {
-	Curve            elliptic.Curve
-	DN               pkix.Name
-	IsCA             bool
-	KeyUsage         x509.KeyUsage
-	ExtKeyUsage      []x509.ExtKeyUsage
-	DNSNames         []string
-	IPAddresses      []net.IP
+	Curve         elliptic.Curve
+	DN            pkix.Name
+	IsCA          bool
+	KeyUsage      x509.KeyUsage
+	ExtKeyUsage   []x509.ExtKeyUsage
+	DNSNames      []string
+	IPAddresses   []net.IP
+	ValidityYears int // Certificate validity period in years
 }
 
 // ParseYAML parses the YAML configuration file
@@ -73,6 +82,17 @@ func ParseYAML(filename string) (*YAMLConfig, error) {
 		cfg.Curve = "P-256"
 	}
 
+	// Default validity periods (in years)
+	if cfg.Validity.CA == 0 {
+		cfg.Validity.CA = 10 // CA: 10 years default
+	}
+	if cfg.Validity.Server == 0 {
+		cfg.Validity.Server = 1 // Server: 1 year default
+	}
+	if cfg.Validity.Client == 0 {
+		cfg.Validity.Client = 1 // Client: 1 year default
+	}
+
 	return &cfg, nil
 }
 
@@ -84,11 +104,12 @@ func (y *YAMLConfig) GetCAConfig() (*Config, error) {
 	}
 
 	return &Config{
-		Curve:       curve,
-		DN:          y.buildDN(y.CA.OrganizationalUnit, y.CA.CommonName),
-		IsCA:        true,
-		KeyUsage:    parseKeyUsageList(y.CA.KeyUsage),
-		ExtKeyUsage: parseExtKeyUsageList(y.CA.ExtKeyUsage),
+		Curve:         curve,
+		DN:            y.buildDN(y.CA.OrganizationalUnit, y.CA.CommonName),
+		IsCA:          true,
+		KeyUsage:      parseKeyUsageList(y.CA.KeyUsage),
+		ExtKeyUsage:   parseExtKeyUsageList(y.CA.ExtKeyUsage),
+		ValidityYears: y.Validity.CA,
 	}, nil
 }
 
@@ -100,11 +121,12 @@ func (y *YAMLConfig) GetServerConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Curve:       curve,
-		DN:          y.buildDN(y.Server.OrganizationalUnit, y.Server.CommonName),
-		IsCA:        false,
-		KeyUsage:    parseKeyUsageList(y.Server.KeyUsage),
-		ExtKeyUsage: parseExtKeyUsageList(y.Server.ExtKeyUsage),
+		Curve:         curve,
+		DN:            y.buildDN(y.Server.OrganizationalUnit, y.Server.CommonName),
+		IsCA:          false,
+		KeyUsage:      parseKeyUsageList(y.Server.KeyUsage),
+		ExtKeyUsage:   parseExtKeyUsageList(y.Server.ExtKeyUsage),
+		ValidityYears: y.Validity.Server,
 	}
 
 	// Parse alt_names
@@ -128,11 +150,12 @@ func (y *YAMLConfig) GetClientConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Curve:       curve,
-		DN:          y.buildDN(y.Client.OrganizationalUnit, y.Client.CommonName),
-		IsCA:        false,
-		KeyUsage:    parseKeyUsageList(y.Client.KeyUsage),
-		ExtKeyUsage: parseExtKeyUsageList(y.Client.ExtKeyUsage),
+		Curve:         curve,
+		DN:            y.buildDN(y.Client.OrganizationalUnit, y.Client.CommonName),
+		IsCA:          false,
+		KeyUsage:      parseKeyUsageList(y.Client.KeyUsage),
+		ExtKeyUsage:   parseExtKeyUsageList(y.Client.ExtKeyUsage),
+		ValidityYears: y.Validity.Client,
 	}
 
 	// Parse alt_names if present

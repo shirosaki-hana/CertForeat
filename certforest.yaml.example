@@ -4,6 +4,13 @@
 # 타원 곡선 설정 (P-256, P-384, P-521)
 curve: P-256
 
+# 인증서 유효기간 설정 (년 단위)
+# 생략 시 기본값: CA=10년, Server/Client=1년
+validity:
+  ca: 10       # Root CA 유효기간 (년)
+  server: 1    # 서버 인증서 유효기간 (년)
+  client: 1    # 클라이언트 인증서 유효기간 (년)
+
 # 공통 Distinguished Name (DN) 정보
 # 각 인증서에서 개별 설정 시 오버라이드됨
 dn:

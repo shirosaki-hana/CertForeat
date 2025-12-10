@@ -34,11 +34,12 @@ func GenerateCA(cfg *config.Config) (*ecdsa.PrivateKey, *x509.Certificate, error
 		SerialNumber:          serialNumber,
 		Subject:               cfg.DN,
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // 10 years
+		NotAfter:              time.Now().AddDate(cfg.ValidityYears, 0, 0),
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              cfg.KeyUsage,
-		MaxPathLen:            -1,
+		MaxPathLen:            0,        // Prevent creation of intermediate CAs
+		MaxPathLenZero:        true,     // Explicitly allow MaxPathLen=0
 	}
 
 	// Self-sign the certificate
@@ -74,7 +75,7 @@ func GenerateSigned(cfg *config.Config, caKey *ecdsa.PrivateKey, caCert *x509.Ce
 		SerialNumber:          serialNumber,
 		Subject:               cfg.DN,
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // 10 years
+		NotAfter:              time.Now().AddDate(cfg.ValidityYears, 0, 0),
 		IsCA:                  false,
 		BasicConstraintsValid: true,
 		KeyUsage:              cfg.KeyUsage,
@@ -120,9 +121,9 @@ func SaveKeyPair(dir, name string, key *ecdsa.PrivateKey, cert *x509.Certificate
 		return fmt.Errorf("failed to encode key: %w", err)
 	}
 
-	// Save certificate
+	// Save certificate with explicit permissions (0644 for public cert)
 	certPath := filepath.Join(dir, name+".crt")
-	certFile, err := os.Create(certPath)
+	certFile, err := os.OpenFile(certPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create cert file: %w", err)
 	}
