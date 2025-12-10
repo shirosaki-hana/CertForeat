@@ -4,6 +4,7 @@ package cert
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -15,6 +16,9 @@ import (
 	"certforest/config"
 )
 
+// clockSkewTolerance is the time buffer for NotBefore to handle clock synchronization issues
+const clockSkewTolerance = 5 * time.Minute
+
 // GenerateCA generates a self-signed CA certificate using ECDSA
 func GenerateCA(cfg *config.Config) (*ecdsa.PrivateKey, *x509.Certificate, error) {
 	// Generate ECDSA key pair with configured curve
@@ -23,23 +27,32 @@ func GenerateCA(cfg *config.Config) (*ecdsa.PrivateKey, *x509.Certificate, error
 		return nil, nil, fmt.Errorf("failed to generate key: %w", err)
 	}
 
-	// Generate serial number
+	// Generate serial number (128-bit random, RFC 5280 compliant)
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate serial: %w", err)
 	}
 
+	// Generate Subject Key Identifier (RFC 5280 §4.2.1.2 - MUST for CA certificates)
+	// Method 1: SHA-1 hash of the public key BIT STRING value
+	ski, err := generateSKI(&privateKey.PublicKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate SKI: %w", err)
+	}
+
 	// Create certificate template
+	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               cfg.DN,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(cfg.ValidityYears, 0, 0),
+		NotBefore:             now.Add(-clockSkewTolerance), // Buffer for clock synchronization
+		NotAfter:              now.AddDate(cfg.ValidityYears, 0, 0),
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              cfg.KeyUsage,
-		MaxPathLen:            0,        // Prevent creation of intermediate CAs
-		MaxPathLenZero:        true,     // Explicitly allow MaxPathLen=0
+		MaxPathLen:            0,    // Prevent creation of intermediate CAs
+		MaxPathLenZero:        true, // Explicitly allow MaxPathLen=0
+		SubjectKeyId:          ski,  // RFC 5280 §4.2.1.2
 	}
 
 	// Self-sign the certificate
@@ -64,24 +77,33 @@ func GenerateSigned(cfg *config.Config, caKey *ecdsa.PrivateKey, caCert *x509.Ce
 		return nil, nil, fmt.Errorf("failed to generate key: %w", err)
 	}
 
-	// Generate serial number
+	// Generate serial number (128-bit random, RFC 5280 compliant)
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate serial: %w", err)
 	}
 
+	// Generate Subject Key Identifier (RFC 5280 §4.2.1.2)
+	ski, err := generateSKI(&privateKey.PublicKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate SKI: %w", err)
+	}
+
 	// Create certificate template
+	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               cfg.DN,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(cfg.ValidityYears, 0, 0),
+		NotBefore:             now.Add(-clockSkewTolerance), // Buffer for clock synchronization
+		NotAfter:              now.AddDate(cfg.ValidityYears, 0, 0),
 		IsCA:                  false,
 		BasicConstraintsValid: true,
 		KeyUsage:              cfg.KeyUsage,
 		ExtKeyUsage:           cfg.ExtKeyUsage,
 		DNSNames:              cfg.DNSNames,
 		IPAddresses:           cfg.IPAddresses,
+		SubjectKeyId:          ski,                 // RFC 5280 §4.2.1.2
+		AuthorityKeyId:        caCert.SubjectKeyId, // RFC 5280 §4.2.1.1
 	}
 
 	// Sign with CA
@@ -100,7 +122,7 @@ func GenerateSigned(cfg *config.Config, caKey *ecdsa.PrivateKey, caCert *x509.Ce
 
 // SaveKeyPair saves the private key and certificate to files
 func SaveKeyPair(dir, name string, key *ecdsa.PrivateKey, cert *x509.Certificate) error {
-	// Save private key
+	// Save private key in PKCS#8 format (more universal than SEC 1/EC PRIVATE KEY)
 	keyPath := filepath.Join(dir, name+".key")
 	keyFile, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
@@ -108,13 +130,14 @@ func SaveKeyPair(dir, name string, key *ecdsa.PrivateKey, cert *x509.Certificate
 	}
 	defer keyFile.Close()
 
-	keyBytes, err := x509.MarshalECPrivateKey(key)
+	// Use PKCS#8 format for better compatibility
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
-		return fmt.Errorf("failed to marshal EC key: %w", err)
+		return fmt.Errorf("failed to marshal PKCS#8 key: %w", err)
 	}
 
 	keyPEM := &pem.Block{
-		Type:  "EC PRIVATE KEY",
+		Type:  "PRIVATE KEY", // PKCS#8 format
 		Bytes: keyBytes,
 	}
 	if err := pem.Encode(keyFile, keyPEM); err != nil {
@@ -138,4 +161,18 @@ func SaveKeyPair(dir, name string, key *ecdsa.PrivateKey, cert *x509.Certificate
 	}
 
 	return nil
+}
+
+// generateSKI generates a Subject Key Identifier from an ECDSA public key
+// per RFC 5280 §4.2.1.2 Method 1: SHA-1 hash of the BIT STRING subjectPublicKey
+func generateSKI(pub *ecdsa.PublicKey) ([]byte, error) {
+	// Marshal the public key to get the BIT STRING value
+	pubBytes, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal public key: %w", err)
+	}
+
+	// SHA-1 hash of the public key (RFC 5280 Method 1)
+	hash := sha1.Sum(pubBytes)
+	return hash[:], nil
 }
