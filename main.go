@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,6 +97,16 @@ func main() {
 	}
 	fmt.Printf("Client Certificate: %s\n", filepath.Join(outDir, "client.crt"))
 	fmt.Printf("Client Private Key: %s\n", filepath.Join(outDir, "client.key"))
+
+	// Save client certificate as PKCS#12 format for browser/OS installation
+	if err := cert.SavePKCS12(outDir, "client", clientKey, clientCert, []*x509.Certificate{caCert}, clientConfig.PKCS12Password); err != nil {
+		fmt.Printf("Failed to save client PKCS#12: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Client PKCS#12:     %s\n", filepath.Join(outDir, "client.p12"))
+	if clientConfig.PKCS12Password == "" {
+		fmt.Println("  (No password set - use empty password when importing)")
+	}
 
 	fmt.Println()
 	fmt.Println("All certificates generated.")

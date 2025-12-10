@@ -45,6 +45,7 @@ type CertConfig struct {
 	KeyUsage           []string  `yaml:"key_usage"`
 	ExtKeyUsage        []string  `yaml:"ext_key_usage"`
 	AltNames           *AltNames `yaml:"alt_names,omitempty"`
+	PKCS12Password     string    `yaml:"pkcs12_password,omitempty"` // Password for PKCS#12 file (client cert only)
 }
 
 // AltNames represents Subject Alternative Names
@@ -55,14 +56,15 @@ type AltNames struct {
 
 // Config represents parsed certificate configuration for internal use
 type Config struct {
-	Curve         elliptic.Curve
-	DN            pkix.Name
-	IsCA          bool
-	KeyUsage      x509.KeyUsage
-	ExtKeyUsage   []x509.ExtKeyUsage
-	DNSNames      []string
-	IPAddresses   []net.IP
-	ValidityYears int // Certificate validity period in years
+	Curve          elliptic.Curve
+	DN             pkix.Name
+	IsCA           bool
+	KeyUsage       x509.KeyUsage
+	ExtKeyUsage    []x509.ExtKeyUsage
+	DNSNames       []string
+	IPAddresses    []net.IP
+	ValidityYears  int    // Certificate validity period in years
+	PKCS12Password string // Password for PKCS#12 export (client cert only)
 }
 
 // ParseYAML parses the YAML configuration file
@@ -150,12 +152,13 @@ func (y *YAMLConfig) GetClientConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Curve:         curve,
-		DN:            y.buildDN(y.Client.OrganizationalUnit, y.Client.CommonName),
-		IsCA:          false,
-		KeyUsage:      parseKeyUsageList(y.Client.KeyUsage),
-		ExtKeyUsage:   parseExtKeyUsageList(y.Client.ExtKeyUsage),
-		ValidityYears: y.Validity.Client,
+		Curve:          curve,
+		DN:             y.buildDN(y.Client.OrganizationalUnit, y.Client.CommonName),
+		IsCA:           false,
+		KeyUsage:       parseKeyUsageList(y.Client.KeyUsage),
+		ExtKeyUsage:    parseExtKeyUsageList(y.Client.ExtKeyUsage),
+		ValidityYears:  y.Validity.Client,
+		PKCS12Password: y.Client.PKCS12Password,
 	}
 
 	// Parse alt_names if present

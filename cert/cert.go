@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"certforest/config"
+
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 // clockSkewTolerance is the time buffer for NotBefore to handle clock synchronization issues
@@ -175,4 +177,27 @@ func generateSKI(pub *ecdsa.PublicKey) ([]byte, error) {
 	// SHA-1 hash of the public key (RFC 5280 Method 1)
 	hash := sha1.Sum(pubBytes)
 	return hash[:], nil
+}
+
+// SavePKCS12 saves the private key and certificate as a PKCS#12 (.p12) file
+// The PKCS#12 format bundles the private key, certificate, and CA certificate chain
+// This format is commonly required for client certificate installation in browsers/OS
+func SavePKCS12(dir, name string, key *ecdsa.PrivateKey, cert *x509.Certificate, caCerts []*x509.Certificate, password string) error {
+	p12Path := filepath.Join(dir, name+".p12")
+
+	// Encode to PKCS#12 format with Modern2023 encoder for better compatibility
+	// Modern2023 uses SHA256 and AES-256-CBC which is widely supported
+	encoder := pkcs12.Modern2023
+
+	p12Data, err := encoder.Encode(key, cert, caCerts, password)
+	if err != nil {
+		return fmt.Errorf("failed to encode PKCS#12: %w", err)
+	}
+
+	// Write PKCS#12 file with restrictive permissions (contains private key)
+	if err := os.WriteFile(p12Path, p12Data, 0600); err != nil {
+		return fmt.Errorf("failed to write PKCS#12 file: %w", err)
+	}
+
+	return nil
 }
