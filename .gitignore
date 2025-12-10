@@ -1,0 +1,50 @@
+# ===================
+# Go
+# ===================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# ===================
+# IDE / Editor
+# ===================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===================
+# Generated Certificates & Keys
+# ===================
+certificate/
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ===================
+# Configuration (use .example files)
+# ===================
+ca.conf
+server.conf
+client.conf
+

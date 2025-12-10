@@ -1,0 +1,48 @@
+# CertForest Configuration
+# mTLS 인증서 생성을 위한 설정 파일
+
+# 타원 곡선 설정 (P-256, P-384, P-521)
+curve: P-256
+
+# 공통 Distinguished Name (DN) 정보
+# 각 인증서에서 개별 설정 시 오버라이드됨
+dn:
+  country: US
+  state: California
+  locality: San Francisco
+  organization: My Organization
+
+# Root CA 인증서 설정
+ca:
+  organizational_unit: Certificate Authority
+  common_name: My Root CA
+  key_usage:
+    - keyCertSign
+    - cRLSign
+
+# 서버 인증서 설정
+server:
+  organizational_unit: Web Server
+  common_name: localhost
+  key_usage:
+    - digitalSignature
+    - keyEncipherment
+  ext_key_usage:
+    - serverAuth
+  alt_names:
+    dns:
+      - localhost
+      - example.com
+    ip:
+      - 127.0.0.1
+
+# 클라이언트 인증서 설정
+client:
+  organizational_unit: Client Certificate
+  common_name: my-client
+  key_usage:
+    - digitalSignature
+    - keyEncipherment
+  ext_key_usage:
+    - clientAuth
+
